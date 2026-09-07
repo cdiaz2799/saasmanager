@@ -1,0 +1,18 @@
+{
+  "mcpServers": {
+    "context7": {
+      "command": "npx",
+      "args": ["-y", "@upstash/context7-mcp"]
+    },
+    "shadcn": {
+      "command": "npx",
+      "args": ["-y", "shadcn@latest", "mcp"]
+    },
+    "supabase": {
+      "url": "https://mcp.supabase.com/mcp"
+    },
+    "better-auth": {
+      "url": "https://mcp.better-auth.com/mcp"
+    }
+  }
+}

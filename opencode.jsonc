@@ -1,0 +1,26 @@
+{
+  "mcp": {
+    "context7": {
+      "type": "local",
+      "command": ["bunx", "-y", "@upstash/context7-mcp"],
+      "enabled": true,
+      "environment": {}
+    },
+    "shadcn": {
+      "type": "local",
+      "command": ["bunx", "-y", "shadcn@latest", "mcp"],
+      "enabled": true,
+      "environment": {}
+    },
+    "supabase": {
+      "type": "remote",
+      "url": "https://mcp.supabase.com/mcp",
+      "enabled": true
+    },
+    "better-auth": {
+      "type": "remote",
+      "url": "https://mcp.better-auth.com/mcp",
+      "enabled": true
+    }
+  }
+}

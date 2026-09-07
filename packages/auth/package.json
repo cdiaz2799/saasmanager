@@ -1,0 +1,24 @@
+{
+  "name": "@saasmanager/auth",
+  "type": "module",
+  "exports": {
+    ".": {
+      "default": "./src/index.ts"
+    },
+    "./*": {
+      "default": "./src/*.ts"
+    }
+  },
+  "scripts": {},
+  "dependencies": {
+    "@saasmanager/db": "workspace:*",
+    "@saasmanager/env": "workspace:*",
+    "better-auth": "catalog:",
+    "dotenv": "catalog:",
+    "zod": "catalog:"
+  },
+  "devDependencies": {
+    "@saasmanager/config": "workspace:*",
+    "typescript": "catalog:"
+  }
+}

@@ -1,0 +1,29 @@
+{
+  "name": "@saasmanager/api",
+  "type": "module",
+  "exports": {
+    ".": {
+      "default": "./src/index.ts"
+    },
+    "./*": {
+      "default": "./src/*.ts"
+    }
+  },
+  "scripts": {},
+  "dependencies": {
+    "@orpc/client": "catalog:",
+    "@orpc/openapi": "catalog:",
+    "@orpc/server": "catalog:",
+    "@orpc/zod": "catalog:",
+    "@saasmanager/auth": "workspace:*",
+    "@saasmanager/db": "workspace:*",
+    "@saasmanager/env": "workspace:*",
+    "dotenv": "catalog:",
+    "zod": "catalog:"
+  },
+  "devDependencies": {
+    "@saasmanager/config": "workspace:*",
+    "elysia": "catalog:",
+    "typescript": "catalog:"
+  }
+}
