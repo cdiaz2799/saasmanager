@@ -1,5 +1,5 @@
 import { env } from "@saasmanager/env/server";
-import { drizzle } from "drizzle-orm/node-postgres";
+import { drizzle } from "drizzle-orm/bun-sql";
 
 import { authRelations } from "./schema/auth";
 

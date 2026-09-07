@@ -6,6 +6,7 @@ export default defineConfig({
     alwaysBundle: [/@saasmanager\/.*/],
   },
   entry: "./src/index.ts",
+  external: ["bun"],
   format: "esm",
   outDir: "./dist",
 });
