@@ -1,4 +1,4 @@
-import { relations } from "drizzle-orm";
+import { defineRelations } from "drizzle-orm";
 import {
   boolean,
   index,
@@ -87,21 +87,18 @@ export const verification = pgTable(
   (table) => [index("verification_identifier_idx").on(table.identifier)]
 );
 
-export const userRelations = relations(user, ({ many }) => ({
-  accounts: many(account),
-  sessions: many(session),
-}));
-
-export const sessionRelations = relations(session, ({ one }) => ({
-  user: one(user, {
-    fields: [session.userId],
-    references: [user.id],
-  }),
-}));
-
-export const accountRelations = relations(account, ({ one }) => ({
-  user: one(user, {
-    fields: [account.userId],
-    references: [user.id],
-  }),
-}));
+export const authRelations = defineRelations(
+  { account, session, user, verification },
+  (r) => ({
+    account: {
+      user: r.one.user({ from: r.account.userId, to: r.user.id }),
+    },
+    session: {
+      user: r.one.user({ from: r.session.userId, to: r.user.id }),
+    },
+    user: {
+      accounts: r.many.account(),
+      sessions: r.many.session(),
+    },
+  })
+);

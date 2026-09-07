@@ -1,8 +1,13 @@
+import { drizzleAdapter } from "@better-auth/drizzle-adapter/relations-v2";
 import { createDb } from "@saasmanager/db";
-import * as schema from "@saasmanager/db/schema/auth";
+import {
+  account,
+  session,
+  user,
+  verification,
+} from "@saasmanager/db/schema/auth";
 import { env } from "@saasmanager/env/server";
 import { betterAuth } from "better-auth";
-import { drizzleAdapter } from "better-auth/adapters/drizzle";
 
 export function createAuth() {
   const db = createDb();
@@ -19,7 +24,7 @@ export function createAuth() {
     database: drizzleAdapter(db, {
       provider: "pg",
 
-      schema,
+      schema: { account, session, user, verification },
     }),
     emailAndPassword: {
       enabled: true,
