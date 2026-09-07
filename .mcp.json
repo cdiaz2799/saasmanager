@@ -15,6 +15,10 @@
     "better-auth": {
       "type": "http",
       "url": "https://mcp.better-auth.com/mcp"
+    },
+    "playwright": {
+      "command": "bunx",
+      "args": ["-y", "@playwright/mcp@latest"]
     }
   }
 }

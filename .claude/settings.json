@@ -1,10 +1,25 @@
 {
   "hooks": {
+    "PreToolUse": [
+      {
+        "hooks": [
+          {
+            "command": "bash .claude/hooks/block-env-edits.sh",
+            "type": "command"
+          }
+        ],
+        "matcher": "Write|Edit"
+      }
+    ],
     "PostToolUse": [
       {
         "hooks": [
           {
             "command": "bun run fix --skip=correctness/noUnusedImports",
+            "type": "command"
+          },
+          {
+            "command": "bash .claude/hooks/typecheck-on-edit.sh",
             "type": "command"
           }
         ],
