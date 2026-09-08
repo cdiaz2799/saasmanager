@@ -11,7 +11,7 @@
       "dotenv": "^17.4.2",
       "zod": "^4.5.4",
       "typescript": "^7.0.2",
-      "@types/bun": "^1.4.1",
+      "@types/bun": "^1.4.2",
       "elysia": "^1.4.30",
       "@orpc/server": "^1.15.0",
       "@orpc/openapi": "^1.15.0",
