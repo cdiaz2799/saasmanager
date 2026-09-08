@@ -14,7 +14,7 @@
     },
     "supabase": {
       "type": "remote",
-      "url": "https://mcp.supabase.com/mcp",
+      "url": "http://127.0.0.1:54321/mcp",
       "enabled": true
     },
     "better-auth": {
