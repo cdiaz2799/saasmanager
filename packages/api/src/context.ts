@@ -1,9 +1,9 @@
 import { auth } from "@saasmanager/auth";
 import type { Context as ElysiaContext } from "elysia";
 
-export type CreateContextOptions = {
+export interface CreateContextOptions {
   context: ElysiaContext;
-};
+}
 
 export async function createContext({ context }: CreateContextOptions) {
   const session = await auth.api.getSession({
@@ -11,6 +11,7 @@ export async function createContext({ context }: CreateContextOptions) {
   });
   return {
     auth: null,
+    headers: context.request.headers,
     session,
   };
 }

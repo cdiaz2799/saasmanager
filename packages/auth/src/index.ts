@@ -6,6 +6,8 @@ import { env } from "@saasmanager/env/server";
 import { betterAuth } from "better-auth";
 import { organization } from "better-auth/plugins/organization";
 
+import { ac, roles } from "./permissions";
+
 export function createAuth(db = createDb()) {
   return betterAuth({
     account: { modelName: "authAccount" },
@@ -32,8 +34,12 @@ export function createAuth(db = createDb()) {
     },
     plugins: [
       organization({
+        ac,
         allowUserToCreateOrganization: false,
         disableOrganizationDeletion: true,
+        dynamicAccessControl: {
+          enabled: true,
+        },
         organizationHooks: {
           afterCreateOrganization: async ({
             organization: createdOrganization,
@@ -41,6 +47,7 @@ export function createAuth(db = createDb()) {
             await provisionOrganizationTenant(db, createdOrganization.id);
           },
         },
+        roles,
       }),
     ],
     secret: env.BETTER_AUTH_SECRET,

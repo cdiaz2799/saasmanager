@@ -1,8 +1,8 @@
 {
   "version": "8",
   "dialect": "postgres",
-  "id": "6f0df4de-fcd2-4636-9265-f6caa7b00780",
-  "prevIds": ["84c6b746-f99e-4a69-a2ce-f89d19eb5665"],
+  "id": "db4d0aa6-c84e-45f7-8d42-42295ec5567b",
+  "prevIds": ["6f0df4de-fcd2-4636-9265-f6caa7b00780"],
   "ddl": [
     {
       "values": ["invited", "active", "suspended", "deprovisioned", "unknown"],
@@ -418,6 +418,12 @@
     {
       "isRlsEnabled": false,
       "name": "members",
+      "entityType": "tables",
+      "schema": "public"
+    },
+    {
+      "isRlsEnabled": false,
+      "name": "organization_roles",
       "entityType": "tables",
       "schema": "public"
     },
@@ -2095,6 +2101,84 @@
       "entityType": "columns",
       "schema": "public",
       "table": "members"
+    },
+    {
+      "type": "uuid",
+      "typeSchema": null,
+      "notNull": true,
+      "dimensions": 0,
+      "default": "pg_catalog.gen_random_uuid()",
+      "generated": null,
+      "identity": null,
+      "name": "id",
+      "entityType": "columns",
+      "schema": "public",
+      "table": "organization_roles"
+    },
+    {
+      "type": "uuid",
+      "typeSchema": null,
+      "notNull": true,
+      "dimensions": 0,
+      "default": null,
+      "generated": null,
+      "identity": null,
+      "name": "organization_id",
+      "entityType": "columns",
+      "schema": "public",
+      "table": "organization_roles"
+    },
+    {
+      "type": "text",
+      "typeSchema": null,
+      "notNull": true,
+      "dimensions": 0,
+      "default": null,
+      "generated": null,
+      "identity": null,
+      "name": "role",
+      "entityType": "columns",
+      "schema": "public",
+      "table": "organization_roles"
+    },
+    {
+      "type": "text",
+      "typeSchema": null,
+      "notNull": true,
+      "dimensions": 0,
+      "default": null,
+      "generated": null,
+      "identity": null,
+      "name": "permission",
+      "entityType": "columns",
+      "schema": "public",
+      "table": "organization_roles"
+    },
+    {
+      "type": "timestamp",
+      "typeSchema": null,
+      "notNull": true,
+      "dimensions": 0,
+      "default": null,
+      "generated": null,
+      "identity": null,
+      "name": "created_at",
+      "entityType": "columns",
+      "schema": "public",
+      "table": "organization_roles"
+    },
+    {
+      "type": "timestamp",
+      "typeSchema": null,
+      "notNull": false,
+      "dimensions": 0,
+      "default": null,
+      "generated": null,
+      "identity": null,
+      "name": "updated_at",
+      "entityType": "columns",
+      "schema": "public",
+      "table": "organization_roles"
     },
     {
       "type": "uuid",
@@ -9701,6 +9785,48 @@
       "nameExplicit": true,
       "columns": [
         {
+          "value": "organization_id",
+          "isExpression": false,
+          "asc": true,
+          "nullsFirst": false,
+          "opclass": null
+        }
+      ],
+      "isUnique": false,
+      "where": null,
+      "with": "",
+      "method": "btree",
+      "concurrently": false,
+      "name": "organizationRoles_organizationId_idx",
+      "entityType": "indexes",
+      "schema": "public",
+      "table": "organization_roles"
+    },
+    {
+      "nameExplicit": true,
+      "columns": [
+        {
+          "value": "role",
+          "isExpression": false,
+          "asc": true,
+          "nullsFirst": false,
+          "opclass": null
+        }
+      ],
+      "isUnique": false,
+      "where": null,
+      "with": "",
+      "method": "btree",
+      "concurrently": false,
+      "name": "organizationRoles_role_idx",
+      "entityType": "indexes",
+      "schema": "public",
+      "table": "organization_roles"
+    },
+    {
+      "nameExplicit": true,
+      "columns": [
+        {
           "value": "slug",
           "isExpression": false,
           "asc": true,
@@ -14423,6 +14549,19 @@
     },
     {
       "nameExplicit": false,
+      "columns": ["organization_id"],
+      "schemaTo": "public",
+      "tableTo": "organizations",
+      "columnsTo": ["id"],
+      "onUpdate": "NO ACTION",
+      "onDelete": "CASCADE",
+      "name": "organization_roles_organization_id_organizations_id_fkey",
+      "entityType": "fks",
+      "schema": "public",
+      "table": "organization_roles"
+    },
+    {
+      "nameExplicit": false,
       "columns": ["user_id"],
       "schemaTo": "public",
       "tableTo": "users",
@@ -16020,6 +16159,14 @@
       "name": "member_pkey",
       "schema": "public",
       "table": "members",
+      "entityType": "pks"
+    },
+    {
+      "columns": ["id"],
+      "nameExplicit": false,
+      "name": "organization_roles_pkey",
+      "schema": "public",
+      "table": "organization_roles",
       "entityType": "pks"
     },
     {
@@ -18845,13 +18992,5 @@
       "table": "technical_assets"
     }
   ],
-  "renames": [
-    "public.account->public.auth_accounts",
-    "public.invitation->public.invitations",
-    "public.member->public.members",
-    "public.organization->public.organizations",
-    "public.session->public.sessions",
-    "public.user->public.users",
-    "public.verification->public.verifications"
-  ]
+  "renames": []
 }

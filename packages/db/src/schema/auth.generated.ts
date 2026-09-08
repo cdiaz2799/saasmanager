@@ -103,6 +103,26 @@ export const organizations = pgTable(
   (table) => [uniqueIndex("organizations_slug_uidx").on(table.slug)],
 );
 
+export const organizationRoles = pgTable(
+  "organization_roles",
+  {
+    id: uuid("id")
+      .default(sql`pg_catalog.gen_random_uuid()`)
+      .primaryKey(),
+    organizationId: uuid("organization_id")
+      .notNull()
+      .references(() => organizations.id, { onDelete: "cascade" }),
+    role: text("role").notNull(),
+    permission: text("permission").notNull(),
+    createdAt: timestamp("created_at").notNull(),
+    updatedAt: timestamp("updated_at").$onUpdate(() => new Date()),
+  },
+  (table) => [
+    index("organizationRoles_organizationId_idx").on(table.organizationId),
+    index("organizationRoles_role_idx").on(table.role),
+  ],
+);
+
 export const members = pgTable(
   "members",
   {
@@ -155,6 +175,7 @@ export const authRelations = defineRelationsPart(
     authAccounts,
     verifications,
     organizations,
+    organizationRoles,
     members,
     invitations,
   },
@@ -190,6 +211,10 @@ export const authRelations = defineRelationsPart(
       }),
     },
     organizations: {
+      organizationRoles: r.many.organizationRoles({
+        from: r.organizations.id,
+        to: r.organizationRoles.organizationId,
+      }),
       members: r.many.members({
         from: r.organizations.id,
         to: r.members.organizationId,
@@ -197,6 +222,12 @@ export const authRelations = defineRelationsPart(
       invitations: r.many.invitations({
         from: r.organizations.id,
         to: r.invitations.organizationId,
+      }),
+    },
+    organizationRoles: {
+      organization: r.one.organizations({
+        from: r.organizationRoles.organizationId,
+        to: r.organizations.id,
       }),
     },
     members: {

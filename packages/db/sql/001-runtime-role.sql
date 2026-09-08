@@ -16,7 +16,7 @@ BEGIN
     IF t.rowsecurity THEN
       EXECUTE format('ALTER TABLE public.%I FORCE ROW LEVEL SECURITY', t.tablename);
     END IF;
-    IF t.tablename IN ('users', 'sessions', 'auth_accounts', 'verifications', 'organizations', 'members', 'invitations')
+    IF t.tablename IN ('users', 'sessions', 'auth_accounts', 'verifications', 'organizations', 'organization_roles', 'members', 'invitations')
        OR t.rowsecurity THEN
       EXECUTE format('REVOKE ALL ON TABLE public.%I FROM %I', t.tablename, current_user);
       EXECUTE format('GRANT SELECT, INSERT, UPDATE, DELETE ON TABLE public.%I TO %I', t.tablename, current_user);

@@ -30,6 +30,7 @@ const {
   members: member,
   users: user,
 } = await import("../src/schema/auth.generated");
+const { domainScopes } = await import("../../auth/src/permissions");
 const { organizationTenant } = await import(
   "../src/schema/organization-tenant"
 );
@@ -419,21 +420,25 @@ test("tenantProcedure rejects missing authentication, selection, membership and 
     tenantId: context.tenantId,
   }));
   await expect(
-    procedure.callable({ context: { auth: null, session: null } })()
+    procedure.callable({ context: { auth: null, headers, session: null } })()
   ).rejects.toMatchObject({ code: "UNAUTHORIZED" });
   const missingSelection = {
     ...current,
     session: { ...current.session, activeOrganizationId: null },
   };
   await expect(
-    procedure.callable({ context: { auth: null, session: missingSelection } })()
+    procedure.callable({
+      context: { auth: null, headers, session: missingSelection },
+    })()
   ).rejects.toMatchObject({ code: "BAD_REQUEST" });
   const forbidden = {
     ...current,
     session: { ...current.session, activeOrganizationId: otherOrganizationId },
   };
   await expect(
-    procedure.callable({ context: { auth: null, session: forbidden } })()
+    procedure.callable({
+      context: { auth: null, headers, session: forbidden },
+    })()
   ).rejects.toMatchObject({ code: "FORBIDDEN" });
   const missingId = crypto.randomUUID();
   await database.insert(organization).values({
@@ -454,7 +459,9 @@ test("tenantProcedure rejects missing authentication, selection, membership and 
     session: { ...current.session, activeOrganizationId: missingId },
   };
   await expect(
-    procedure.callable({ context: { auth: null, session: unavailable } })()
+    procedure.callable({
+      context: { auth: null, headers, session: unavailable },
+    })()
   ).rejects.toMatchObject({ code: "SERVICE_UNAVAILABLE" });
 });
 
@@ -465,7 +472,7 @@ test("tenantProcedure scopes successful work and rolls back handler failures", a
   if (!current) {
     throw new Error("Missing test session");
   }
-  const context = { auth: null, session: current };
+  const context = { auth: null, headers, session: current };
   const read = tenantProcedure
     .handler(async ({ context: tenant }) => {
       const rows = await tenant.db
@@ -491,6 +498,201 @@ test("tenantProcedure scopes successful work and rolls back handler failures", a
     .from(tenants)
     .where(eq(tenants.id, tenantA));
   expect(storedTenant?.timezone).toBe("UTC");
+});
+
+test("permissionProcedure rechecks built-in and tenant-defined roles", async () => {
+  const { permissionProcedure } = await import("../../api/src/index");
+  await auth.api.setActiveOrganization({ body: { organizationId }, headers });
+  const ownerSession = await auth.api.getSession({ headers });
+  if (!ownerSession) {
+    throw new Error("Missing owner test session");
+  }
+  const ownerContext = { auth: null, headers, session: ownerSession };
+  const allPermissions = permissionProcedure(...domainScopes)
+    .handler(() => "allowed")
+    .callable({ context: ownerContext });
+  expect(await allPermissions()).toBe("allowed");
+
+  const [otherMembership] = await database
+    .select()
+    .from(member)
+    .where(
+      and(eq(member.organizationId, organizationId), eq(member.userId, otherId))
+    );
+  if (!otherMembership) {
+    await auth.api.addMember({
+      body: { organizationId, role: "member", userId: otherId },
+      headers,
+    });
+  }
+  const [memberToUpdate] = await database
+    .select()
+    .from(member)
+    .where(
+      and(eq(member.organizationId, organizationId), eq(member.userId, otherId))
+    );
+  if (!memberToUpdate) {
+    throw new Error("Missing organization member");
+  }
+  await auth.api.createOrgRole({
+    body: {
+      organizationId,
+      permission: { catalog: ["read"] },
+      role: "catalog_reader",
+    },
+    headers,
+  });
+  await auth.api.updateMemberRole({
+    body: {
+      memberId: memberToUpdate.id,
+      organizationId,
+      role: "catalog_reader",
+    },
+    headers,
+  });
+  await auth.api.setActiveOrganization({
+    body: { organizationId },
+    headers: otherHeaders,
+  });
+  const memberSession = await auth.api.getSession({ headers: otherHeaders });
+  if (!memberSession) {
+    throw new Error("Missing member test session");
+  }
+  const memberContext = {
+    auth: null,
+    headers: otherHeaders,
+    session: memberSession,
+  };
+  const catalogRead = permissionProcedure("catalog:read")
+    .handler(() => "allowed")
+    .callable({ context: memberContext });
+  expect(await catalogRead()).toBe("allowed");
+  const catalogWrite = permissionProcedure("catalog:write")
+    .handler(() => "denied")
+    .callable({ context: memberContext });
+  await expect(catalogWrite()).rejects.toMatchObject({ code: "FORBIDDEN" });
+  const { getPermissionHandlerCalls, handleTenantTestRequest } = await import(
+    "../../api/test/tenant-handler"
+  );
+  const deniedResponse = await handleTenantTestRequest(
+    new Request("http://localhost:3000/permission-test", {
+      headers: otherHeaders,
+    })
+  );
+  expect(deniedResponse.response?.status).toBe(403);
+  expect(getPermissionHandlerCalls()).toBe(0);
+  await auth.api.updateOrgRole({
+    body: {
+      data: { permission: { catalog: ["write"] } },
+      organizationId,
+      roleName: "catalog_reader",
+    },
+    headers,
+  });
+  await expect(catalogRead()).rejects.toMatchObject({ code: "FORBIDDEN" });
+  expect(await catalogWrite()).toBe("denied");
+});
+
+test("only owners may manage domain roles or privileged assignments", async () => {
+  const { guardOrganizationRoleManagement } = await import(
+    "../../../apps/server/src/role-management-guard"
+  );
+  const validRoleRequest = new Request(
+    "http://localhost:3000/api/auth/organization/create-role",
+    {
+      body: JSON.stringify({
+        organizationId,
+        permission: { catalog: ["read"] },
+        role: "another_catalog_reader",
+      }),
+      headers,
+      method: "POST",
+    }
+  );
+  await expect(
+    guardOrganizationRoleManagement({
+      auth,
+      database,
+      request: validRoleRequest,
+    })
+  ).resolves.toBeNull();
+  const invalidRoleRequest = new Request(
+    "http://localhost:3000/api/auth/organization/create-role",
+    {
+      body: JSON.stringify({
+        organizationId,
+        permission: { ac: ["create"] },
+        role: "escalation",
+      }),
+      headers,
+      method: "POST",
+    }
+  );
+  const invalidResponse = await guardOrganizationRoleManagement({
+    auth,
+    database,
+    request: invalidRoleRequest,
+  });
+  expect(invalidResponse?.status).toBe(400);
+
+  const ordinaryMemberAdd = await guardOrganizationRoleManagement({
+    auth,
+    database,
+    request: new Request(
+      "http://localhost:3000/api/auth/organization/add-member",
+      {
+        body: JSON.stringify({ organizationId, role: "member" }),
+        headers: otherHeaders,
+        method: "POST",
+      }
+    ),
+  });
+  expect(ordinaryMemberAdd?.status).toBe(403);
+
+  const [memberToUpdate] = await database
+    .select()
+    .from(member)
+    .where(
+      and(eq(member.organizationId, organizationId), eq(member.userId, otherId))
+    );
+  if (!memberToUpdate) {
+    throw new Error("Missing organization member");
+  }
+  await auth.api.updateMemberRole({
+    body: { memberId: memberToUpdate.id, organizationId, role: "admin" },
+    headers,
+  });
+  await expect(
+    guardOrganizationRoleManagement({
+      auth,
+      database,
+      request: new Request(
+        "http://localhost:3000/api/auth/organization/add-member",
+        {
+          body: JSON.stringify({ organizationId, role: "member" }),
+          headers: otherHeaders,
+          method: "POST",
+        }
+      ),
+    })
+  ).resolves.toBeNull();
+  const deniedResponse = await guardOrganizationRoleManagement({
+    auth,
+    database,
+    request: new Request(
+      "http://localhost:3000/api/auth/organization/create-role",
+      {
+        body: JSON.stringify({
+          organizationId,
+          permission: { catalog: ["read"] },
+          role: "admin_escalation",
+        }),
+        headers: otherHeaders,
+        method: "POST",
+      }
+    ),
+  });
+  expect(deniedResponse?.status).toBe(403);
 });
 
 test("OpenAPI requests enforce session and tenant boundaries", async () => {

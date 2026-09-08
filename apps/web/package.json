@@ -15,6 +15,7 @@
     "@orpc/server": "catalog:",
     "@orpc/tanstack-query": "^1.15.0",
     "@saasmanager/api": "workspace:*",
+    "@saasmanager/auth": "workspace:*",
     "@saasmanager/env": "workspace:*",
     "@saasmanager/ui": "workspace:*",
     "@tailwindcss/vite": "^4.3.3",

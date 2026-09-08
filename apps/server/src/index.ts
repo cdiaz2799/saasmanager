@@ -19,6 +19,8 @@ import {
 import { evlog } from "evlog/elysia";
 import { createFsDrain } from "evlog/fs";
 
+import { guardOrganizationRoleManagement } from "./role-management-guard";
+
 const rpcHandler = new RPCHandler(appRouter, {
   interceptors: [
     onError((error) => {
@@ -72,6 +74,14 @@ new Elysia()
   .all("/api/auth/*", async (context) => {
     const { request, status } = context;
     if (["POST", "GET"].includes(request.method)) {
+      const denied = await guardOrganizationRoleManagement({
+        auth,
+        database: db,
+        request,
+      });
+      if (denied) {
+        return denied;
+      }
       return auth.handler(request);
     }
     return status(405);

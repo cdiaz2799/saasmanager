@@ -1,4 +1,9 @@
 import { ORPCError, os } from "@orpc/server";
+import { auth } from "@saasmanager/auth";
+import {
+  type DomainScope,
+  scopeToPermission,
+} from "@saasmanager/auth/permissions";
 import { db } from "@saasmanager/db";
 import {
   resolveTenantMembership,
@@ -11,7 +16,7 @@ export const o = os.$context<Context>();
 
 export const publicProcedure = o;
 
-const requireAuth = o.middleware(async ({ context, next }) => {
+const requireAuth = o.middleware(({ context, next }) => {
   if (!context.session?.user) {
     throw new ORPCError("UNAUTHORIZED");
   }
@@ -60,3 +65,25 @@ export const tenantProcedure = protectedProcedure.use(
     );
   }
 );
+
+export function permissionProcedure(
+  requiredScope: DomainScope,
+  ...additionalScopes: readonly DomainScope[]
+) {
+  const requiredScopes = [requiredScope, ...additionalScopes];
+  return tenantProcedure.use(async ({ context, next }) => {
+    const results = await Promise.all(
+      requiredScopes.map(
+        async (scope) =>
+          await auth.api.hasPermission({
+            body: { permissions: scopeToPermission(scope) },
+            headers: context.headers,
+          })
+      )
+    );
+    if (results.some((result) => !result?.success)) {
+      throw new ORPCError("FORBIDDEN");
+    }
+    return next();
+  });
+}
