@@ -1,14 +1,7 @@
 import { cors } from "@elysiajs/cors";
-import { OpenAPIHandler } from "@orpc/openapi/fetch";
-import { OpenAPIReferencePlugin } from "@orpc/openapi/plugins";
-import { onError } from "@orpc/server";
-import { RPCHandler } from "@orpc/server/fetch";
-import { ZodToJsonSchemaConverter } from "@orpc/zod/zod4";
 import { createContext } from "@saasmanager/api/context";
-import { appRouter } from "@saasmanager/api/routers/index";
 import { auth } from "@saasmanager/auth";
 import { db } from "@saasmanager/db";
-import { assertRuntimeDatabase } from "@saasmanager/db/runtime";
 import { env } from "@saasmanager/env/server";
 import { Elysia } from "elysia";
 import { initLogger } from "evlog";
@@ -18,28 +11,8 @@ import {
 } from "evlog/better-auth";
 import { evlog } from "evlog/elysia";
 import { createFsDrain } from "evlog/fs";
-
+import { apiHandler, rpcHandler } from "./orpc-handlers";
 import { guardOrganizationRoleManagement } from "./role-management-guard";
-
-const rpcHandler = new RPCHandler(appRouter, {
-  interceptors: [
-    onError((error) => {
-      console.error(error);
-    }),
-  ],
-});
-const apiHandler = new OpenAPIHandler(appRouter, {
-  interceptors: [
-    onError((error) => {
-      console.error(error);
-    }),
-  ],
-  plugins: [
-    new OpenAPIReferencePlugin({
-      schemaConverters: [new ZodToJsonSchemaConverter()],
-    }),
-  ],
-});
 
 initLogger({
   env: { service: "saasmanager-server" },
@@ -49,8 +22,6 @@ const identifyUser = createAuthMiddleware(auth as BetterAuthInstance, {
   exclude: ["/api/auth/**"],
   maskEmail: true,
 });
-
-await assertRuntimeDatabase(db);
 
 new Elysia()
   .use(

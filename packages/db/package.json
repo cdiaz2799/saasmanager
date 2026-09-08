@@ -24,6 +24,8 @@
     "zod": "catalog:"
   },
   "devDependencies": {
+    "@orpc/client": "catalog:",
+    "@orpc/server": "catalog:",
     "@saasmanager/config": "workspace:*",
     "@types/bun": "catalog:",
     "drizzle-kit": "1.0.0-rc.4",

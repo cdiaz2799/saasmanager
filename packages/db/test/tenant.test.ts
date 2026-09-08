@@ -1,9 +1,12 @@
 import { afterAll, beforeAll, expect, test } from "bun:test";
+import { createORPCClient } from "@orpc/client";
+import { call } from "@orpc/server";
 import { file, SQL } from "bun";
 import { and, eq, sql } from "drizzle-orm";
 import { drizzle } from "drizzle-orm/bun-sql";
 import { migrate } from "drizzle-orm/bun-sql/migrator";
 import { z } from "zod";
+import type { AppRouterClient } from "../../api/src/routers/index";
 
 // This suite only targets the documented disposable local database.
 const adminUrl =
@@ -420,25 +423,27 @@ test("tenantProcedure rejects missing authentication, selection, membership and 
     tenantId: context.tenantId,
   }));
   await expect(
-    procedure.callable({ context: { auth: null, headers, session: null } })()
+    call(procedure, undefined, {
+      context: { auth: null, headers, session: null },
+    })
   ).rejects.toMatchObject({ code: "UNAUTHORIZED" });
   const missingSelection = {
     ...current,
     session: { ...current.session, activeOrganizationId: null },
   };
   await expect(
-    procedure.callable({
+    call(procedure, undefined, {
       context: { auth: null, headers, session: missingSelection },
-    })()
+    })
   ).rejects.toMatchObject({ code: "BAD_REQUEST" });
   const forbidden = {
     ...current,
     session: { ...current.session, activeOrganizationId: otherOrganizationId },
   };
   await expect(
-    procedure.callable({
+    call(procedure, undefined, {
       context: { auth: null, headers, session: forbidden },
-    })()
+    })
   ).rejects.toMatchObject({ code: "FORBIDDEN" });
   const missingId = crypto.randomUUID();
   await database.insert(organization).values({
@@ -459,9 +464,9 @@ test("tenantProcedure rejects missing authentication, selection, membership and 
     session: { ...current.session, activeOrganizationId: missingId },
   };
   await expect(
-    procedure.callable({
+    call(procedure, undefined, {
       context: { auth: null, headers, session: unavailable },
-    })()
+    })
   ).rejects.toMatchObject({ code: "SERVICE_UNAVAILABLE" });
 });
 
@@ -473,26 +478,24 @@ test("tenantProcedure scopes successful work and rolls back handler failures", a
     throw new Error("Missing test session");
   }
   const context = { auth: null, headers, session: current };
-  const read = tenantProcedure
-    .handler(async ({ context: tenant }) => {
-      const rows = await tenant.db
-        .select()
-        .from(tenants)
-        .where(eq(tenants.id, tenant.tenantId));
-      return rows.map((row) => row.id);
-    })
-    .callable({ context });
-  expect(await read()).toEqual([tenantA]);
-  const fail = tenantProcedure
-    .handler(async ({ context: tenant }) => {
-      await tenant.db
-        .update(tenants)
-        .set({ timezone: "Europe/London" })
-        .where(eq(tenants.id, tenant.tenantId));
-      throw new Error("handler fixture failure");
-    })
-    .callable({ context });
-  await expect(fail()).rejects.toThrow("handler fixture failure");
+  const read = tenantProcedure.handler(async ({ context: tenant }) => {
+    const rows = await tenant.db
+      .select()
+      .from(tenants)
+      .where(eq(tenants.id, tenant.tenantId));
+    return rows.map((row) => row.id);
+  });
+  expect(await call(read, undefined, { context })).toEqual([tenantA]);
+  const fail = tenantProcedure.handler(async ({ context: tenant }) => {
+    await tenant.db
+      .update(tenants)
+      .set({ timezone: "Europe/London" })
+      .where(eq(tenants.id, tenant.tenantId));
+    throw new Error("handler fixture failure");
+  });
+  await expect(call(fail, undefined, { context })).rejects.toThrow(
+    "handler fixture failure"
+  );
   const [storedTenant] = await admin
     .select()
     .from(tenants)
@@ -508,10 +511,12 @@ test("permissionProcedure rechecks built-in and tenant-defined roles", async () 
     throw new Error("Missing owner test session");
   }
   const ownerContext = { auth: null, headers, session: ownerSession };
-  const allPermissions = permissionProcedure(...domainScopes)
-    .handler(() => "allowed")
-    .callable({ context: ownerContext });
-  expect(await allPermissions()).toBe("allowed");
+  const allPermissions = permissionProcedure(...domainScopes).handler(
+    () => "allowed"
+  );
+  expect(await call(allPermissions, undefined, { context: ownerContext })).toBe(
+    "allowed"
+  );
 
   const [otherMembership] = await database
     .select()
@@ -563,14 +568,18 @@ test("permissionProcedure rechecks built-in and tenant-defined roles", async () 
     headers: otherHeaders,
     session: memberSession,
   };
-  const catalogRead = permissionProcedure("catalog:read")
-    .handler(() => "allowed")
-    .callable({ context: memberContext });
-  expect(await catalogRead()).toBe("allowed");
-  const catalogWrite = permissionProcedure("catalog:write")
-    .handler(() => "denied")
-    .callable({ context: memberContext });
-  await expect(catalogWrite()).rejects.toMatchObject({ code: "FORBIDDEN" });
+  const catalogRead = permissionProcedure("catalog:read").handler(
+    () => "allowed"
+  );
+  expect(await call(catalogRead, undefined, { context: memberContext })).toBe(
+    "allowed"
+  );
+  const catalogWrite = permissionProcedure("catalog:write").handler(
+    () => "denied"
+  );
+  await expect(
+    call(catalogWrite, undefined, { context: memberContext })
+  ).rejects.toMatchObject({ code: "FORBIDDEN" });
   const { getPermissionHandlerCalls, handleTenantTestRequest } = await import(
     "../../api/test/tenant-handler"
   );
@@ -589,8 +598,12 @@ test("permissionProcedure rechecks built-in and tenant-defined roles", async () 
     },
     headers,
   });
-  await expect(catalogRead()).rejects.toMatchObject({ code: "FORBIDDEN" });
-  expect(await catalogWrite()).toBe("denied");
+  await expect(
+    call(catalogRead, undefined, { context: memberContext })
+  ).rejects.toMatchObject({ code: "FORBIDDEN" });
+  expect(await call(catalogWrite, undefined, { context: memberContext })).toBe(
+    "denied"
+  );
 });
 
 test("only owners may manage domain roles or privileged assignments", async () => {
@@ -719,4 +732,100 @@ test("OpenAPI requests enforce session and tenant boundaries", async () => {
     new Request("http://localhost:3000/tenant-test", { headers })
   );
   expect(unselected.response?.status).toBe(400);
+});
+
+test("v2 web RPC transport preserves authentication and rejects GET", async () => {
+  const { rpcHandler } = await import("../../../apps/server/src/orpc-handlers");
+  const { createRpcLink } = await import(
+    "../../../apps/web/src/utils/rpc-link"
+  );
+  let requestHeaders = new Headers();
+  const client: AppRouterClient = createORPCClient(
+    createRpcLink("http://localhost:3000", async (url, options) => {
+      expect(options.credentials).toBe("include");
+      expect(options.method).toBe("POST");
+      const sentHeaders = new Headers(options.headers);
+      for (const [key, value] of requestHeaders) {
+        sentHeaders.set(key, value);
+      }
+      const request = new Request(url, { ...options, headers: sentHeaders });
+      const { response } = await rpcHandler.handle(request, {
+        context: {
+          auth: null,
+          headers: request.headers,
+          session: await auth.api.getSession({ headers: request.headers }),
+        },
+        prefix: "/rpc",
+      });
+      if (!response) {
+        throw new Error("RPC request did not match");
+      }
+      return response;
+    })
+  );
+  expect(await client.healthCheck()).toBe("OK");
+  await expect(client.privateData()).rejects.toMatchObject({
+    code: "UNAUTHORIZED",
+  });
+  requestHeaders = headers;
+  expect((await client.privateData()).user?.id).toBe(ownerId);
+  const get = await rpcHandler.handle(
+    new Request("http://localhost:3000/rpc/healthCheck"),
+    {
+      context: { auth: null, headers: new Headers(), session: null },
+      prefix: "/rpc",
+    }
+  );
+  // Disallowed methods fall through to the server's 404 response.
+  expect(get.matched).toBe(false);
+  expect(get.response).toBeUndefined();
+});
+
+test("v2 OpenAPI reference serves Scalar, stable paths and error statuses", async () => {
+  const { apiHandler } = await import("../../../apps/server/src/orpc-handlers");
+  const context = { auth: null, headers: new Headers(), session: null };
+  const handle = async (path: string, method = "GET") => {
+    const result = await apiHandler.handle(
+      new Request(`http://localhost:3000/api-reference${path}`, { method }),
+      {
+        context,
+        prefix: "/api-reference",
+      }
+    );
+    if (!result.response) {
+      throw new Error("OpenAPI request did not match");
+    }
+    return result.response;
+  };
+  const docs = await handle("");
+  expect(docs.status).toBe(200);
+  expect(await docs.text()).toContain("scalar");
+  const specResponse = await handle("/spec.json");
+  expect(specResponse.status).toBe(200);
+  const spec = z
+    .object({
+      openapi: z.string(),
+      paths: z.record(
+        z.string(),
+        z.object({ post: z.record(z.string(), z.unknown()) })
+      ),
+      servers: z.array(z.object({ url: z.string() })),
+    })
+    .parse(await specResponse.json());
+  expect(spec.openapi).toBe("3.1.1");
+  expect(spec.servers).toEqual([{ url: "/api-reference" }]);
+  expect(Object.keys(spec.paths).sort()).toEqual([
+    "/healthCheck",
+    "/privateData",
+  ]);
+  expect(spec.paths["/healthCheck"]?.post).toBeDefined();
+  expect(spec.paths["/privateData"]?.post).toBeDefined();
+  const health = await handle("/healthCheck", "POST");
+  expect(health.status).toBe(200);
+  expect(await health.json()).toBe("OK");
+  const denied = await handle("/privateData", "POST");
+  expect(denied.status).toBe(401);
+  const error = await denied.json();
+  expect(error).toMatchObject({ code: "UNAUTHORIZED" });
+  expect(error).not.toHaveProperty("status");
 });

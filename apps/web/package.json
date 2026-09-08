@@ -13,7 +13,7 @@
   "dependencies": {
     "@orpc/client": "catalog:",
     "@orpc/server": "catalog:",
-    "@orpc/tanstack-query": "^1.15.0",
+    "@orpc/tanstack-query": "catalog:",
     "@saasmanager/api": "workspace:*",
     "@saasmanager/auth": "workspace:*",
     "@saasmanager/env": "workspace:*",

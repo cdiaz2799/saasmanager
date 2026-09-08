@@ -9,7 +9,10 @@ Code style/quality standards live in `.claude/CLAUDE.md` (Ultracite/Biome preset
 ## Project Overview
 
 This project is a multi-tenant SaaS system of record: a software catalog, commercial ledger, observed access and usage, and explainable reconciliation.
-Read saas-system-of-record-design.md and the API contract when available.
+Read `saas-system-of-record-design.md` and the API contract at
+`docs/saas-system-of-record.openapi.yaml`. `docs/permissions.md` derives the 16
+capabilities from that contract; `docs/rbac.md` records what the current release
+actually implements; `docs/tenant-isolation.md` covers provisioning and testing.
 
 When implementation and design disagree, identify the discrepancy and document
 the chosen resolution; do not silently redefine the domain.
@@ -50,15 +53,10 @@ Better Auth's `organization` is the customer org; the domain `tenants` table
 `organization_tenant` (`packages/db/src/schema/organization-tenant.ts`), a
 server-only mapping — never returned to a client.
 
-`packages/db/src/tenant.ts` holds the helpers:
-- `resolveTenantMembership(db, userId, organizationId)` → `forbidden` (not a member),
-  `unavailable` (no tenant provisioned yet), or `ready` with `membership` + `tenantId`.
-  Run this to turn a requested org selection into an authorized `tenantId`.
-- `withTenantTransaction(db, tenantId, cb)` — opens a transaction with the
-  `app.tenant_id` GUC set so RLS applies; all tenant-scoped work goes through it.
-- `provisionOrganizationTenant(db, organizationId)` — trusted server only, never an
-  endpoint. Locks the org row, is idempotent (the auth hook that calls it is not
-  atomic with org creation, so retries are expected).
+`packages/db/src/tenant.ts` holds the helpers — `resolveTenantMembership()` to turn
+a requested org selection into an authorized `tenantId`, `withTenantTransaction()`
+for all tenant-scoped work, and `provisionOrganizationTenant()` for trusted server
+provisioning only. Signatures and rules are in `packages/db/CLAUDE.md`.
 
 Keep credentials in approved secret storage. Domain records contain secret
 references, never credential values. Auth-managed credential fields follow the
@@ -69,7 +67,7 @@ contain tokens, passwords, session cookies, or unredacted source payloads.
 
 Bun + Turborepo monorepo. `bun` is the package manager and runtime (`packageManager: bun@1.3.14`); there is no npm/pnpm lockfile. Shared dependency versions are pinned in the root `package.json` `workspaces.catalog` and referenced as `"catalog:"` in each package — bump versions there, not per-package.
 
-- `apps/server` — Elysia HTTP server (port 3000). Single entrypoint `src/index.ts`. Mounts Better Auth, the oRPC RPC handler, and the oRPC OpenAPI handler. Request logging is `evlog` (`initLogger`, `evlog/elysia`); non-prod writes structured NDJSON to `.evlog/logs/` via `createFsDrain` (see the `analyze-logs` skill). The `identifyUser` middleware from `evlog/better-auth` enriches logs with the session.
+- `apps/server` — Elysia HTTP server (port 3000). `src/index.ts` is the entrypoint; `src/role-management-guard.ts` gates Better Auth org role/member endpoints. Mounts Better Auth, the oRPC RPC handler, and the oRPC OpenAPI handler. Request logging is `evlog` (`initLogger`, `evlog/elysia`); non-prod writes structured NDJSON to `.evlog/logs/` via `createFsDrain` (see the `analyze-logs` skill). The `identifyUser` middleware from `evlog/better-auth` enriches logs with the session.
 - `apps/web` — React 19 + Vite 8 + TanStack Router (file-based routes in `src/routes`) + TanStack Query. Dev on port 3001, talks to the server over `/rpc` and `/api/auth`.
 - `packages/api` — oRPC procedure definitions (the API contract). No build; consumed as TS source via `exports`.
 - `packages/auth` — Better Auth instance config (`createAuth()` / `auth`).
@@ -89,22 +87,25 @@ Run from the repo root; Turbo fans out to workspaces.
 - `bun run build` — build all (`apps/server` bundles via `build.ts`, `apps/web` via `vite build`)
 - `bun run check-types` — `tsc` across all packages (also runs automatically on file edit via a PostToolUse hook that type-checks the touched package and its dependents)
 - `bun run check` / `bun run fix` — Ultracite (Biome) lint / autofix. `fix` also runs automatically on every Write/Edit.
+- `bun run auth:generate` — regenerate `packages/db/src/schema/auth.generated.ts` from the Better Auth config. That file is generated; never hand-edit it.
+- `bun run docker:up` / `docker:down` / `docker:logs` / `docker:build` — full stack via `docker-compose.yml` (web :3001, server :3000).
 - `bun test packages/db/test/tenant.test.ts` — integration coverage for organizations, membership, provisioning, RLS, scoped transactions, and OpenAPI boundaries; requires the disposable PostgreSQL fixture described in `docs/tenant-isolation.md`.
 
 ### Database (drizzle-kit, from `packages/db`)
 
 - `bun run db:generate` — generate a SQL migration from schema changes
+  (output goes to `packages/db/src/migrations`, not the drizzle default)
 - `bun run db:migrate` — apply migrations
 - `bun run db:push` — push schema directly; **local prototyping only**, never against the shared Supabase DB
 - `bun run db:studio` — Drizzle Studio
 
 `drizzle.config.ts` reads `DATABASE_URL` from `apps/server/.env` (not `packages/db/.env`).
-Migrations and runtime intentionally use the same URL; the login must be a normal
-non-superuser, non-`BYPASSRLS` role. Postgres is Supabase-hosted
-(`supabase/config.toml`). After migrations, apply
-`packages/db/sql/001-runtime-role.sql` and restart so `assertRuntimeDatabase()`
-checks the live role and RLS configuration. When changing schema, use the
-`db-schema-change` skill (`.claude/skills/db-schema-change/SKILL.md`).
+Postgres is Supabase-hosted (`supabase/config.toml`). A trusted server-only
+database login, including Supabase's `postgres` login, is supported; a restricted
+runtime role is optional defense in depth. After migrations, apply
+`packages/db/sql/001-runtime-role.sql` to retain RLS and browser-role grant
+hardening. When changing schema, use the `db-schema-change` skill
+(`.claude/skills/db-schema-change/SKILL.md`).
 
 ## API layer (oRPC)
 
@@ -118,35 +119,37 @@ checks the live role and RLS configuration. When changing schema, use the
 ## Auth (Better Auth)
 
 - `packages/auth/src/index.ts` — `betterAuth()` with the Drizzle adapter (`@better-auth/drizzle-adapter/relations-v2`), email+password enabled, cookies `sameSite: "none"` + `secure` (cross-site web↔server), `trustedOrigins`/`baseURL` from env.
-- Auth tables live in `packages/db/src/schema/auth.generated.ts`: `users`, `sessions`, `authAccounts`, `verifications`, `organizations`, `members`, and `invitations` (Better Auth organization plugin). `packages/db/src/auth.ts` exposes generated auth models and auth-only relations so Better Auth's `usePlural: true` does not collide with the domain `accounts` table. `createDb()` (`packages/db/src/index.ts`) passes domain and auth relations to the general Drizzle client; the auth adapter uses its scoped client. Any new relation must be registered in the appropriate set or `.query` joins silently break.
+- Auth tables live in `packages/db/src/schema/auth.generated.ts` (generated — see `bun run auth:generate`): `users`, `sessions`, `authAccounts`, `verifications`, `organizations`, `organizationRoles`, `members`, and `invitations` (Better Auth organization plugin). `packages/db/src/auth.ts` exposes generated auth models and auth-only relations so Better Auth's `usePlural: true` does not collide with the domain `accounts` table. `createDb()` (`packages/db/src/index.ts`) passes domain and auth relations to the general Drizzle client; the auth adapter uses its scoped client. Any new relation must be registered in the appropriate set or `.query` joins silently break.
 - Better Auth keeps `generateId: "uuid"` and `joins: true`; the generated auth UUID ID columns use database UUID defaults for direct inserts. Organization self-service creation and deletion are disabled. Trusted server provisioning calls `provisionOrganizationTenant()` from the organization hook and may retry incomplete mappings.
 - Server mounts `auth.handler` at `/api/auth/*` (GET/POST only). `evlog/better-auth` middleware (`identifyUser`) enriches request logs with the session; `maskEmail: true`.
 - Web: `apps/web/src/lib/auth-client.ts` (`authClient`, base URL `/api/auth`). Route protection is `beforeLoad` in `apps/web/src/routes/_auth/route.tsx`, which redirects to `/login` when there is no session.
 - Use the `auth-security-reviewer` agent after touching any of the above.
 
-## Database schema conventions (`packages/db/src/schema`)
+### Authorization (RBAC)
 
-Two distinct table families:
+`packages/auth/src/permissions.ts` defines the access-control statement, the built-in
+roles, and `areDomainPermissions`. `permissionProcedure(scope, ...scopes)`
+(`packages/api/src/index.ts`) extends `tenantProcedure` with an `auth.api.hasPermission`
+check per scope and throws `FORBIDDEN` on any failure — use it, not a hand-rolled check.
+`apps/server/src/role-management-guard.ts` intercepts the Better Auth
+`/api/auth/organization/*` role and membership endpoints before `auth.handler`, so
+custom-role management stays owner-only. Update that guard when adding org endpoints.
+`docs/rbac.md` has the role/capability matrix and states what is *not* yet implemented.
 
-1. **Better Auth tables** (`auth.generated.ts`) — UUID ids, plain `timestamp`, shapes dictated by the adapter. Don't restyle them.
-2. **Domain tables** (`catalog.ts`, `commercial.ts`, `technical.ts`, `integrations.ts`, `ingestion.ts`, `audit.ts`) — multi-tenant SaaS-inventory model. These use:
-   - `pgTable.withRLS(...)` + `tenantPolicy(column)` from `shared.ts` for row-level tenant isolation (`app.tenant_id` GUC). RLS isolates tenants; field-level authz stays in the API.
-   - `recordColumns()` / `recordConstraints(name, t)` from `shared.ts` for the standard `id` (uuid) / `tenantId` / `createdAt` / `updatedAt` / `revision` columns, the `(tenant_id, id)` unique, and the standard indexes.
-   - `entityRegistry` + `entityConstraints(name, t, kind)` (`catalog.ts`) for the shared-identity pattern: typed entity tables carry a composite FK back to `entity_registry` on `(tenant_id, id, kind)`.
-   - All enums are centralized in `enum.ts` (`pgEnum`).
-   - `$inferSelect` / `$inferInsert` types are internal persistence types, not public DTOs.
-   - `revision` / `updatedAt` are maintained by SQL triggers, not app code. `shared.ts` notes an invariants SQL file to apply after the generated baseline migration — check with the user for out-of-band SQL when setting up a fresh DB.
-   - `tables.ts` aggregates every domain table into the `tables` object and re-exports select public types.
-   - `organization-tenant.ts` maps one Better Auth organization ID to one domain tenant UUID. The mapping is server-only and must not be accepted from client input.
+## Database schema conventions
 
-### Tenant database rules
+`packages/db/CLAUDE.md` has the full conventions: the domain table pattern
+(`pgTable.withRLS` + `recordColumns()` + `recordConstraints()`), the
+`entity_registry` shared-identity pattern, the `assertRuntimeDatabase()` startup
+rules, and the migration sequence. Read it before touching `packages/db`.
 
-- Domain handlers use `tenantProcedure` and `context.db`; do not use the global `db` inside a tenant transaction.
-- Set `app.tenant_id` with `set_config(..., true)` inside the transaction. Never use a session-level `SET` on a pooled connection.
-- Keep all callback work awaited and materialize results before returning. Do not hold a transaction during vendor network calls or return deferred queries/streams.
+What callers outside `packages/db` need to know:
+
+- Domain handlers use `tenantProcedure` and `context.db`; never the global `db` inside a tenant transaction.
 - Preserve composite `(tenant_id, referenced_id)` foreign keys and RLS policies when adding domain tables.
-- New domain tables must have forced RLS and the `tenant_isolation` policy before startup validation will pass. Update `packages/db/sql/001-runtime-role.sql` when privilege grants change.
-- Use `docs/tenant-isolation.md` for organization provisioning, mapping repair, deployment, and disposable integration tests.
+- New domain tables need forced RLS and exactly one `tenant_isolation` policy, or startup validation fails.
+- `revision` / `updatedAt` are **not** maintained by triggers yet — a write path needing an accurate revision must set it explicitly. See `packages/db/CLAUDE.md`.
+- `docs/tenant-isolation.md` covers provisioning, mapping repair, deployment, and the disposable integration tests.
 
 ## Guardrails already wired
 

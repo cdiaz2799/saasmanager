@@ -101,11 +101,12 @@ This is a fresh-database baseline. It is not an upgrade/backfill for an existing
 shared database. Generated Drizzle migrations define tables and RLS; the versioned
 `packages/db/sql/001-runtime-role.sql` defines runtime privileges.
 
-1. Use the same `DATABASE_URL` for migrations and the server. The login must be
-   `NOSUPERUSER NOBYPASSRLS NOCREATEROLE` and must not belong to an elevated role.
-   It may own the application tables and needs schema creation rights for
-   migrations. Existing superuser or BYPASSRLS credentials must be replaced with
-   a normal login; FORCE RLS cannot constrain those roles.
+1. Use a `DATABASE_URL` that is appropriate for the environment. The server may
+   use the Supabase `postgres` login or another trusted server-only login; it is
+   not required to create a separate runtime role. Never expose that URL to a
+   browser or untrusted worker. A separate `NOSUPERUSER NOBYPASSRLS
+   NOCREATEROLE` runtime role remains an optional defense-in-depth hardening,
+   but is not an application startup requirement.
 2. Apply migrations from `packages/db`: `bun run db:migrate`. Review generated
    SQL first. Use `db:generate` from that package for future schema changes;
    this avoids Turbo's interactive-task restriction in noninteractive shells.
@@ -115,10 +116,11 @@ shared database. Generated Drizzle migrations define tables and RLS; the version
    privileges, and grants the current login DML on application tables. It
    removes ordinary TRUNCATE and mapping update/delete privileges. Table owners
    retain schema administration authority and can regrant privileges.
-4. Start the server. Before listening, it rejects elevated roles, missing RLS or
-   policy setup, unforced RLS on owned tables, missing DML grants, and TRUNCATE
-   privileges. A failed check prevents startup; correct the setup instead of
-   disabling the checks.
+4. Start the server. Tenant authorization is enforced in the request layer:
+   `tenantProcedure` verifies membership and runs domain work in a
+   tenant-scoped transaction. The RLS and grant hardening from the previous
+   step is retained as defense in depth, but the server does not block startup
+   based on the database login or privilege configuration.
 5. Provision organizations and owners through trusted server operations. Existing
    user-level login and health endpoints remain separate from tenant data access.
 

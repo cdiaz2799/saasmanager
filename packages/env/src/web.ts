@@ -7,5 +7,5 @@ export const env = createEnv({
   },
   clientPrefix: "VITE_",
   emptyStringAsUndefined: true,
-  runtimeEnv: (import.meta as any).env,
+  runtimeEnv: import.meta.env,
 });

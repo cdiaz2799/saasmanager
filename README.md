@@ -122,7 +122,7 @@ selection and never grants access by itself. Domain queries run through the
 tenant-scoped transaction exposed by `tenantProcedure`, which sets the
 transaction-local `app.tenant_id` value used by PostgreSQL RLS.
 
-The database also enforces tenant-qualified foreign keys. Runtime startup rejects
-superuser or `BYPASSRLS` credentials and verifies forced RLS, tenant policies, and
-required privileges. See [docs/tenant-isolation.md](docs/tenant-isolation.md) for
-the provisioning, deployment, recovery, and local verification procedures.
+The database also enforces tenant-qualified foreign keys. RLS and restricted
+database roles are optional defense-in-depth hardening; runtime tenant access is
+authorized by `tenantProcedure`. See [docs/tenant-isolation.md](docs/tenant-isolation.md)
+for the provisioning, deployment, recovery, and local verification procedures.
