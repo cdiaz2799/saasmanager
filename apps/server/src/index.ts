@@ -7,6 +7,8 @@ import { ZodToJsonSchemaConverter } from "@orpc/zod/zod4";
 import { createContext } from "@saasmanager/api/context";
 import { appRouter } from "@saasmanager/api/routers/index";
 import { auth } from "@saasmanager/auth";
+import { db } from "@saasmanager/db";
+import { assertRuntimeDatabase } from "@saasmanager/db/runtime";
 import { env } from "@saasmanager/env/server";
 import { Elysia } from "elysia";
 import { initLogger } from "evlog";
@@ -45,6 +47,8 @@ const identifyUser = createAuthMiddleware(auth as BetterAuthInstance, {
   exclude: ["/api/auth/**"],
   maskEmail: true,
 });
+
+await assertRuntimeDatabase(db);
 
 new Elysia()
   .use(

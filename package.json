@@ -29,6 +29,7 @@
     }
   },
   "scripts": {
+    "auth:generate": "turbo run auth:generate -F @saasmanager/auth --",
     "build": "turbo run build",
     "check": "ultracite check",
     "check-types": "turbo run check-types",

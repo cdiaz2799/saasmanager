@@ -28,14 +28,11 @@ bun install
 
 This project uses PostgreSQL with Drizzle ORM.
 
-1. Make sure you have a PostgreSQL database set up.
-2. Update your `apps/server/.env` file with your PostgreSQL connection details.
-
-3. Apply the schema to your database:
-
-```bash
-bun run db:push
-```
+Use a fresh PostgreSQL database and follow the [tenant isolation setup](docs/tenant-isolation.md#database-setup-and-deployment)
+to apply the generated migrations and runtime role grants. The server requires a
+normal PostgreSQL login and forced RLS. Migrations and runtime use the same
+`DATABASE_URL` credentials. The guide also covers organization provisioning and
+local integration tests. `db:push` is for disposable local prototyping only.
 
 Then, run the development server:
 
@@ -116,3 +113,16 @@ saasmanager/
 - `bun run docker:up`: Build and start the Docker Compose stack
 - `bun run docker:logs`: Tail logs from the Docker Compose stack
 - `bun run docker:down`: Stop the Docker Compose stack
+
+## Tenant isolation
+
+Each Better Auth organization maps to exactly one SaaSManager tenant. Organization
+membership is checked on every tenant request; the active organization is only a
+selection and never grants access by itself. Domain queries run through the
+tenant-scoped transaction exposed by `tenantProcedure`, which sets the
+transaction-local `app.tenant_id` value used by PostgreSQL RLS.
+
+The database also enforces tenant-qualified foreign keys. Runtime startup rejects
+superuser or `BYPASSRLS` credentials and verifies forced RLS, tenant policies, and
+required privileges. See [docs/tenant-isolation.md](docs/tenant-isolation.md) for
+the provisioning, deployment, recovery, and local verification procedures.

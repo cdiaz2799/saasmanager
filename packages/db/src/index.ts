@@ -1,10 +1,11 @@
 import { env } from "@saasmanager/env/server";
 import { drizzle } from "drizzle-orm/bun-sql";
 
-import { authRelations } from "./schema/auth";
+import { relations } from "./relations";
+import { authRelations } from "./schema/auth.generated";
 
-export function createDb() {
-  return drizzle(env.DATABASE_URL, { relations: authRelations });
+export function createDb(url: string = env.DATABASE_URL) {
+  return drizzle(url, { relations: { ...relations, ...authRelations } });
 }
 
 export const db = createDb();

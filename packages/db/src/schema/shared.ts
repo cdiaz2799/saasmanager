@@ -47,7 +47,6 @@ export const tenants = pgTable.withRLS(
       .defaultNow(),
     defaultCurrency: text("default_currency").notNull().default("USD"),
     id: uuid("id").defaultRandom().primaryKey(),
-    name: text("name").notNull(),
     retentionConfig: jsonb("retention_config")
       .$type<JsonObject>()
       .notNull()

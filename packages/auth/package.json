@@ -9,7 +9,9 @@
       "default": "./src/*.ts"
     }
   },
-  "scripts": {},
+  "scripts": {
+    "auth:generate": "bun x --bun auth@1.7.3 generate --config ./auth-cli.config.ts --output ../db/src/schema/auth.generated.ts --yes"
+  },
   "dependencies": {
     "@better-auth/drizzle-adapter": "1.7.3",
     "@saasmanager/db": "workspace:*",
@@ -20,6 +22,8 @@
   },
   "devDependencies": {
     "@saasmanager/config": "workspace:*",
+    "@types/bun": "catalog:",
+    "auth": "1.7.3",
     "typescript": "catalog:"
   }
 }

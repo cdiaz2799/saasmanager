@@ -1,5 +1,5 @@
 import { defineRelations } from "drizzle-orm";
-import * as tables from "./schema";
+import { tables } from "./schema/tables";
 
 // v1 relational query API. Composite joins preserve tenant boundaries.
 export const relations = defineRelations(tables, (r) => ({

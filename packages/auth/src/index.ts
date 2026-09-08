@@ -1,19 +1,19 @@
 import { drizzleAdapter } from "@better-auth/drizzle-adapter/relations-v2";
 import { createDb } from "@saasmanager/db";
-import {
-  account,
-  session,
-  user,
-  verification,
-} from "@saasmanager/db/schema/auth";
+import { authSchema, createAuthDb } from "@saasmanager/db/auth";
+import { provisionOrganizationTenant } from "@saasmanager/db/tenant";
 import { env } from "@saasmanager/env/server";
 import { betterAuth } from "better-auth";
+import { organization } from "better-auth/plugins/organization";
 
-export function createAuth() {
-  const db = createDb();
-
+export function createAuth(db = createDb()) {
   return betterAuth({
+    account: { modelName: "authAccount" },
     advanced: {
+      database: {
+        generateId: "uuid",
+        joins: true,
+      },
       defaultCookieAttributes: {
         httpOnly: true,
         sameSite: "none",
@@ -21,15 +21,28 @@ export function createAuth() {
       },
     },
     baseURL: env.BETTER_AUTH_URL,
-    database: drizzleAdapter(db, {
+    database: drizzleAdapter(createAuthDb(db.$client), {
       provider: "pg",
 
-      schema: { account, session, user, verification },
+      schema: authSchema,
+      usePlural: true,
     }),
     emailAndPassword: {
       enabled: true,
     },
-    plugins: [],
+    plugins: [
+      organization({
+        allowUserToCreateOrganization: false,
+        disableOrganizationDeletion: true,
+        organizationHooks: {
+          afterCreateOrganization: async ({
+            organization: createdOrganization,
+          }) => {
+            await provisionOrganizationTenant(db, createdOrganization.id);
+          },
+        },
+      }),
+    ],
     secret: env.BETTER_AUTH_SECRET,
     trustedOrigins: [env.CORS_ORIGIN],
   });
